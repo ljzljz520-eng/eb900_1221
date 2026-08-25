@@ -12,12 +12,13 @@ type Result struct {
 	Ready    bool
 }
 
+// Inspect scans a record for its 5S remediation items. Pending only retains
+// items that are still incomplete, so completed items are never reported as
+// awaiting remediation. Score is recomputed from the current item state so a
+// scan reflects the actual deduction rather than any stale stored value.
 func Inspect(r domain.Record) Result {
 	pending := r.IncompleteItems()
-	if r.Status == "draft" {
-		pending = append([]domain.Item{}, r.Items...)
-	}
-	return Result{RecordID: r.ID, Pending: pending, Score: r.Score, Ready: len(pending) == 0}
+	return Result{RecordID: r.ID, Pending: pending, Score: domain.Score(r.Items), Ready: len(pending) == 0}
 }
 func Apply(r *domain.Record, completed []string) error {
 	if r == nil {

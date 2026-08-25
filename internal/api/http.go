@@ -17,6 +17,7 @@ func (s Server) Routes() http.Handler {
 	m.HandleFunc("/records", s.records)
 	m.HandleFunc("/records/", s.record)
 	m.HandleFunc("/import", s.importRows)
+	m.HandleFunc("/scan/", s.scan)
 	return m
 }
 func write(w http.ResponseWriter, v any, code int) {
@@ -79,6 +80,15 @@ func (s Server) importRows(w http.ResponseWriter, r *http.Request) {
 	data = make([]byte, r.ContentLength)
 	r.Body.Read(data)
 	v, e := report.Import(s.Svc, data)
+	if e != nil {
+		write(w, map[string]string{"error": e.Error()}, 400)
+		return
+	}
+	write(w, v, 200)
+}
+func (s Server) scan(w http.ResponseWriter, r *http.Request) {
+	id := strings.TrimPrefix(r.URL.Path, "/scan/")
+	v, e := s.Svc.Scan(id)
 	if e != nil {
 		write(w, map[string]string{"error": e.Error()}, 400)
 		return

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"warehouse5s/internal/domain"
+	"warehouse5s/internal/review"
 	"warehouse5s/internal/storage"
 )
 
@@ -88,4 +89,31 @@ func (s *Service) Publish(id string) (domain.Record, error) {
 		return r, e
 	}
 	return r, s.Store.SaveEvent(domain.AuditEvent{ID: fmt.Sprintf("%s-publish", id), RecordID: id, Kind: "publish", Message: r.Summary(), At: r.UpdatedAt})
+}
+
+// Scan loads a record, inspects its 5S remediation items, and persists the
+// resulting deduction score. Pending holds only the items still awaiting
+// remediation (completed items are dropped), and the deduction is saved so
+// later reads reflect the scanned state.
+func (s *Service) Scan(id string) (review.Result, error) {
+	if s.Clock == nil {
+		s.Clock = FixedClock{Value: "2026-01-01T00:00:00Z"}
+	}
+	r, e := s.Store.GetRecord(id)
+	if e != nil {
+		return review.Result{}, e
+	}
+	if r.IsArchived() {
+		return review.Result{}, errors.New("archived record immutable")
+	}
+	res := review.Inspect(r)
+	if res.Score != r.Score {
+		r.Score = res.Score
+		r.UpdatedAt = s.Clock.Now()
+		if e := s.Store.SaveRecord(r); e != nil {
+			return res, e
+		}
+		_ = s.Store.SaveEvent(domain.AuditEvent{ID: fmt.Sprintf("%s-scan", id), RecordID: id, Kind: "scan", Message: fmt.Sprintf("scanned deduction=%d pending=%d", res.Score, len(res.Pending)), At: r.UpdatedAt})
+	}
+	return res, nil
 }
